@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  nexus-api:
+    image: nexusorchestrator-api
+    build:
+      context: .
+      dockerfile: src/NexusOrchestrator.Api/Dockerfile
+    container_name: nexus_api
+    ports:
+      - '8080:80'
+      - '8081:443'
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__Redis=redis-cache:6379
+      - Serilog__WriteTo__0__Args__serverUrl=http://seq-logger:5341
+      # OpenAI veya Azure OpenAI anahtarlarini .env dosyasindan besleyeceğiz
+      - AI_Model__ApiKey=${OPENAI_API_KEY}
+    depends_on:
+      - redis-cache
+      - seq-logger
+    networks:
+      - nexus-network
+
+  redis-cache:
+    image: redis:alpine
+    container_name: nexus_redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    networks:
+      - nexus-network
+
+  seq-logger:
+    image: datalust/seq:latest
+    container_name: nexus_seq
+    environment:
+      - ACCEPT_EULA=Y
+    ports:
+      - '5341:80' # Seq Web UI (Loglari izleyecegimiz ekran)
+      - '5341:5341' # Seq Ingestion Port (API'nin log gonderecegi port)
+    volumes:
+      - seq_data:/data
+    networks:
+      - nexus-network
+
+networks:
+  nexus-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+  seq_data:
