@@ -1,0 +1,6 @@
+@NexusOrchestrator.Api_HostAddress = http://localhost:5289
+
+GET {{NexusOrchestrator.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
