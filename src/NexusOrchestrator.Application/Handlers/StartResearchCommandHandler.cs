@@ -1,41 +1,57 @@
+
 using MediatR;
 using NexusOrchestrator.Application.Commands;
+using NexusOrchestrator.Application.Events;
 using NexusOrchestrator.Core.Agents;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace NexusOrchestrator.Application.Handlers;
 
-// IRequestHandler<StartResearchCommand, string>: Bu sinifin 'StartResearchCommand' komutunu 
-// isleyecegini ve geriye 'string' donecegini MediatR'a soyler.
+// IRequestHandler arayuzunu uygulayarak bu sinifin komut isleyici oldugunu belirtiyoruz.
 public class StartResearchCommandHandler : IRequestHandler<StartResearchCommand, string>
 {
-  // İhtiyacimiz olan ajanlari Dependency Injection (DI) uzerinden alacagiz.
-  // Şimdilik sistemdeki tüm ajanları bir liste olarak alıp, içinden Researcher olanı seçeceğiz.
+  // Sistemdeki ajanlarin listesini tutacagimiz degisken.
   private readonly IEnumerable<IAgent> _agents;
 
-  public StartResearchCommandHandler(IEnumerable<IAgent> agents)
+  // Olaylari (event) firlatmak icin MediatR'in IPublisher arayuzunu tutacagimiz degisken.
+  private readonly IPublisher _publisher;
+
+  // Constructor uzerinden Dependency Injection (DI) ile ajanlari ve publisher nesnesini aliyoruz.
+  public StartResearchCommandHandler(IEnumerable<IAgent> agents, IPublisher publisher)
   {
+    // Gelen ajan listesini sinif seviyesindeki private degiskene atiyoruz.
     _agents = agents;
+    // Gelen publisher nesnesini sinif seviyesindeki private degiskene atiyoruz.
+    _publisher = publisher;
   }
 
-  // MediatR bu komutu yakaladiginda otomatik olarak Handle metodunu tetikler.
+  // MediatR tarafindan komut geldiginde otomatik olarak tetiklenecek olan ana isleyici metot.
   public async Task<string> Handle(StartResearchCommand request, CancellationToken cancellationToken)
   {
-    // 1. Sistemdeki ajanlar arasindan adi "ResearcherAgent" olani bul.
+    // Sistemdeki ajanlar arasindan adi "ResearcherAgent" olani ariyoruz.
     var researcherAgent = _agents.FirstOrDefault(a => a.Name == "ResearcherAgent");
 
-    // Eger ajan sisteme kayitli degilse, isleme devam edilemez, hata firlatilir.
+    // Eger arastirmaci ajan bulunamazsa sistemin calismasini durdurup hata firlatiyoruz.
     if (researcherAgent == null)
     {
+      // Hatayi aciklayici bir mesajla firlatiyoruz, boylece loglardan kolayca izlenebilir.
       throw new InvalidOperationException("ResearcherAgent sistemde bulunamadi.");
     }
 
-    // 2. Ajanin icindeki ana mantigi (Semantic Kernel) tetikle ve sonucu bekle.
+    // Ajanin icindeki ExecuteAsync metodunu cagirarak Semantic Kernel'i tetikliyor ve sonucu bekliyoruz.
     string result = await researcherAgent.ExecuteAsync(request.Topic, cancellationToken);
 
-    // 3. (Gelecek Adim) Burada MediatR uzerinden 'ResearchCompletedEvent' firlatarak
-    // diger ajanlari (Summarizer) haberdar edecegiz.
+    // Ajan isini bitirdi, MediatR uzerinden firlatilacak olayi (event payload) olusturuyoruz.
+    var researchCompletedEvent = new ResearchCompletedEvent(result);
 
-    // Sonucu geri don.
+    // Olusturdugumuz olayi MediatR uzerinden tum sisteme yayinliyoruz (Publish).
+    await _publisher.Publish(researchCompletedEvent, cancellationToken);
+
+    // Islem sonucunu baslangic noktasina (API katmanina) geri donduruyoruz.
     return result;
   }
 }
